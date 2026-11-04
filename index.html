@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>지씨셀 IR 데일리 브리핑 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #09090b;
+            color: #f4f4f5;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .spin-animation { animation: spin 0.8s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #18181b; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
+    </style>
+</head>
+<body class="min-h-screen pb-16">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-zinc-800/80 bg-zinc-950/80 sticky top-0 z-50 backdrop-blur-xl">
+        <div class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold text-xs">GC</div>
+                <h1 class="text-xs font-bold text-white tracking-tight flex items-center gap-1.5">
+                    지씨셀 IR 데일리 브리핑
+                    <span class="px-1.5 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded font-mono">AUTO</span>
+                </h1>
+            </div>
+            <div class="flex items-center space-x-2.5">
+                <div class="hidden sm:flex items-center space-x-1.5 text-[11px] text-zinc-400 bg-zinc-900/80 px-2.5 py-1 rounded-lg border border-zinc-800">
+                    <span id="status-dot" class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
+                    <span id="update-timestamp">동기화 대기중...</span>
+                </div>
+                <button id="btn-refresh" onclick="refreshData()" class="flex items-center space-x-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-lg text-xs border border-zinc-800 transition-all active:scale-95 shadow-sm">
+                    <i data-lucide="refresh-cw" id="refresh-icon" class="w-3.5 h-3.5 text-emerald-400"></i>
+                    <span class="font-medium">새로고침</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 mt-6 space-y-5">
+
+        <!-- Top Action Banner -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-900/90 border border-zinc-800/80 p-4 rounded-2xl shadow-xl">
+            <div class="space-y-1">
+                <div class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <i data-lucide="clock" class="w-3.5 h-3.5"></i> 장 마감 후 자동 갱신
+                </div>
+                <p id="banner-desc" class="text-[11px] text-zinc-400">키움증권 REST API 기준 화면입니다. 새로고침 버튼은 시세·수급·뉴스를 모두 새로 가져옵니다 (serve.py 실행 시). 메일은 마감 후 자동 발송분이 나갑니다.</p>
+            </div>
+            <button onclick="openEmailModal()" class="w-full sm:w-auto flex items-center justify-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-emerald-950/50">
+                <i data-lucide="mail" class="w-3.5 h-3.5"></i>
+                <span>보고서 이메일 작성</span>
+            </button>
+        </div>
+
+        <!-- Grid Container 1: 수급 & 업종지수 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+            <!-- 1. 지씨셀 수급 & 주가 카드 -->
+            <section class="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-5 space-y-4 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                        <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+                            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i> 1. 지씨셀 수급 및 주가
+                        </h2>
+                        <span id="stock-status-tag" class="text-[10px] px-2 py-0.5 bg-zinc-800 text-zinc-300 rounded font-mono">마감 기준</span>
+                    </div>
+
+                    <div class="mt-4">
+                        <div class="flex items-baseline space-x-2.5">
+                            <span id="stock-price" class="text-3xl font-black text-white tracking-tight">불러오는 중...</span>
+                            <span id="stock-ratio" class="text-sm font-bold text-zinc-400">-</span>
+                        </div>
+                        <p id="stock-volume-desc" class="text-[11px] text-zinc-400 mt-1">데이터 동기화 대기 중...</p>
+                    </div>
+
+                    <div class="overflow-x-auto mt-4">
+                        <table class="w-full text-xs text-left text-zinc-300">
+                            <thead class="bg-zinc-950/60 text-zinc-400 uppercase text-[10px] tracking-wider border-b border-zinc-800">
+                                <tr class="font-mono">
+                                    <th class="py-2 px-2.5">투자자별</th>
+                                    <th class="py-2 px-2.5 text-right">금일 마감</th>
+                                    <th class="py-2 px-2.5 text-right">최근 5일</th>
+                                </tr>
+                            </thead>
+                            <tbody id="investor-tbody" class="divide-y divide-zinc-800/40 font-mono text-xs">
+                                <tr>
+                                    <td class="py-2 px-2.5 font-sans font-medium text-white">외국인</td>
+                                    <td id="inv-foreign" class="py-2 px-2.5 text-right text-zinc-300 font-bold">-</td>
+                                    <td id="inv-foreign-5d" class="py-2 px-2.5 text-right text-zinc-400">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2 px-2.5 font-sans font-medium text-white">기관</td>
+                                    <td id="inv-organ" class="py-2 px-2.5 text-right text-zinc-300 font-bold">-</td>
+                                    <td id="inv-organ-5d" class="py-2 px-2.5 text-right text-zinc-400">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2 px-2.5 font-sans font-medium text-white">개인</td>
+                                    <td id="inv-personal" class="py-2 px-2.5 text-right text-zinc-300 font-bold">-</td>
+                                    <td id="inv-personal-5d" class="py-2 px-2.5 text-right text-zinc-400">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-zinc-800/80 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">주요 이슈 (당사 키워드 피드 3선)</h3>
+                        <span class="text-[9px] text-emerald-400 font-mono">지씨셀 · 아티바</span>
+                    </div>
+                    <div id="company-news-container" class="space-y-1.5 text-xs">
+                        <div class="bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-800/60 text-zinc-400 text-center animate-pulse text-[11px]">뉴스 불러오는 중...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. 업종 지수 & NBI 뉴스 카드 -->
+            <section class="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-5 space-y-4 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                        <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+                            <i data-lucide="bar-chart-3" class="w-4 h-4 text-blue-400"></i> 3. 업종 지수
+                        </h2>
+                        <span class="text-[10px] px-2 py-0.5 bg-blue-950/60 text-blue-400 border border-blue-800/50 rounded font-mono">마감 기준</span>
+                    </div>
+
+                    <div class="overflow-x-auto mt-4">
+                        <table class="w-full text-xs text-left text-zinc-300">
+                            <thead class="bg-zinc-950/60 text-zinc-400 uppercase text-[10px] tracking-wider border-b border-zinc-800">
+                                <tr class="font-mono">
+                                    <th class="py-2 px-2.5">지표</th>
+                                    <th class="py-2 px-2.5 text-right">값</th>
+                                    <th class="py-2 px-2.5 text-right">변화율</th>
+                                </tr>
+                            </thead>
+                            <tbody id="indices-tbody" class="divide-y divide-zinc-800/40 font-mono text-xs">
+                                <tr>
+                                    <td class="py-2.5 px-2.5 font-sans font-medium text-white">나스닥 바이오(NBI)</td>
+                                    <td id="nbi-val" class="py-2.5 px-2.5 text-right font-bold text-white">-</td>
+                                    <td id="nbi-ratio" class="py-2.5 px-2.5 text-right font-bold text-zinc-400">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2.5 font-sans font-medium text-white">코스닥 제약 (KQ26)</td>
+                                    <td id="kq26-val" class="py-2.5 px-2.5 text-right font-bold text-white">-</td>
+                                    <td id="kq26-ratio" class="py-2.5 px-2.5 text-right font-bold text-zinc-400">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-zinc-800/80 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">NBI 포함 주요 종목 뉴스 (3선)</h3>
+                        <span class="text-[9px] text-blue-400 font-mono">NBI 구성</span>
+                    </div>
+                    <div id="nbi-news-container" class="space-y-1.5 text-xs">
+                        <div class="bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-800/60 text-zinc-400 text-center animate-pulse text-[11px]">NBI 뉴스 불러오는 중...</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Grid Container 2: IR 주가변동 3대 요인 분석 & 매크로 지표 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+            <!-- 2. IR 주가변동 3대 요인 분석 (IR 톤 적용) -->
+            <section class="md:col-span-2 bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-5 space-y-4 shadow-xl backdrop-blur-sm">
+                <div class="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                    <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+                        <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> 2. IR 주가변동 3대 핵심 요인 분석
+                    </h2>
+                    <span class="text-[9px] px-2 py-0.5 bg-amber-950/60 text-amber-400 border border-amber-800/50 rounded font-mono">기업·업계·매크로</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div class="bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800/70 space-y-2">
+                        <div class="font-bold text-emerald-400 flex items-center gap-1.5 border-b border-zinc-800/60 pb-1.5">
+                            <i data-lucide="newspaper" class="w-3.5 h-3.5"></i> 1. 기사 기반 기업 측면
+                        </div>
+                        <p id="analysis-internal" class="text-zinc-300 text-[11px] leading-relaxed">면역세포치료제 글로벌 임상 순항 및 파이프라인 가치 부각으로 매수세 유입됨.</p>
+                    </div>
+
+                    <div class="bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800/70 space-y-2">
+                        <div class="font-bold text-blue-400 flex items-center gap-1.5 border-b border-zinc-800/60 pb-1.5">
+                            <i data-lucide="users" class="w-3.5 h-3.5"></i> 2. 업계 기반 (코스닥제약/NBI)
+                        </div>
+                        <p id="analysis-supply-external" class="text-zinc-300 text-[11px] leading-relaxed">나스닥 바이오(NBI) 및 코스닥 제약 섹터 전반의 투자 심리 개선으로 동조화 상승함.</p>
+                    </div>
+
+                    <div class="bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800/70 space-y-2">
+                        <div class="font-bold text-purple-400 flex items-center gap-1.5 border-b border-zinc-800/60 pb-1.5">
+                            <i data-lucide="globe" class="w-3.5 h-3.5"></i> 3. 매크로 기반 (증시/환율)
+                        </div>
+                        <p id="analysis-macro-sector" class="text-zinc-300 text-[11px] leading-relaxed">원/달러 환율 안정세 및 외국인 수급 환경 개선으로 하방 압력 제한됨.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. 매크로 지표 -->
+            <section class="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-5 space-y-3 shadow-xl backdrop-blur-sm">
+                <h2 class="text-sm font-bold text-white border-b border-zinc-800/80 pb-3 flex items-center gap-1.5">
+                    <i data-lucide="globe-2" class="w-4 h-4 text-purple-400"></i> 4. 매크로 지표
+                </h2>
+                <div class="overflow-x-auto pt-1">
+                    <table class="w-full text-xs text-left text-zinc-300 font-mono">
+                        <tbody id="macro-tbody" class="divide-y divide-zinc-800/40 text-xs">
+                            <tr>
+                                <td class="py-2.5 font-sans font-medium text-white">코스피</td>
+                                <td id="macro-kospi-val" class="py-2.5 text-right text-white font-bold">-</td>
+                                <td id="macro-kospi-ratio" class="py-2.5 text-right text-zinc-400 font-bold">-</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 font-sans font-medium text-white">코스닥</td>
+                                <td id="macro-kosdaq-val" class="py-2.5 text-right text-white font-bold">-</td>
+                                <td id="macro-kosdaq-ratio" class="py-2.5 text-right text-zinc-400 font-bold">-</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 font-sans font-medium text-white">원/달러</td>
+                                <td id="macro-fx-val" class="py-2.5 text-right text-white font-bold">-</td>
+                                <td id="macro-fx-ratio" class="py-2.5 text-right text-zinc-400 font-bold">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <footer class="text-[11px] text-zinc-500 pt-4 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div>시세·수급·지수: <span class="text-zinc-400">키움증권 REST API</span> · NBI·환율: Yahoo Finance · 뉴스: 네이버(지씨셀)·구글(NBI)</div>
+            <div>지씨셀 IR 데일리 브리핑 자동화 시스템</div>
+        </footer>
+    </main>
+
+    <!-- Email Modal -->
+    <div id="email-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+                    <i data-lucide="mail" class="w-4 h-4 text-emerald-400"></i> 보고서 이메일 작성
+                </h3>
+                <button onclick="closeEmailModal()" class="text-zinc-400 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-zinc-400 mb-1 font-medium">수신자 이메일 주소</label>
+                    <input type="email" id="recipient-email" placeholder="example@email.com" class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-emerald-500 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-zinc-400 mb-1 font-medium">메일 제목</label>
+                    <input type="text" id="email-subject" value="[지씨셀 IR 데일리 브리핑] 마감 수급 및 3대 요인 분석 리포트" class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-emerald-500 transition-colors">
+                </div>
+                <p class="text-[10px] text-zinc-500">버튼을 누르면 사용 중인 메일 앱이 열립니다. 매일 자동 발송은 별도로 설정된 주소로 나갑니다.</p>
+            </div>
+            <div class="flex space-x-2 pt-2">
+                <button onclick="closeEmailModal()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2.5 rounded-xl text-xs font-semibold transition-all">취소</button>
+                <button onclick="sendEmail()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-emerald-950/50">메일 앱 열기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const EMBEDDED = /*__DATA__*/null;
+        const DATA_URL = "data.json";
+        const REFRESH_URL = "api/refresh";
+        const STALE_DAYS = 4;
+        let store = {};
+
+        const $ = (id) => document.getElementById(id);
+
+        function setText(id, v) {
+            const el = $(id);
+            if (el && v !== undefined && v !== null && v !== '') el.textContent = String(v);
+        }
+
+        function toneClass(v) {
+            const s = String(v ?? '');
+            if (s.startsWith('+') && !/^\+0(\.0+)?%?$/.test(s)) return 'text-rose-500';
+            if (s.startsWith('-')) return 'text-sky-400';
+            return 'text-zinc-400';
+        }
+
+        function setTone(id, v, base) {
+            const el = $(id);
+            if (!el) return;
+            el.textContent = (v === undefined || v === null || v === '') ? '-' : String(v);
+            el.className = `${base} ${toneClass(v)}`;
+        }
+
+        function safeUrl(u) {
+            try {
+                const url = new URL(u);
+                return (url.protocol === 'http:' || url.protocol === 'https:') ? url.href : '#';
+            } catch (_) { return '#'; }
+        }
+
+        // 뉴스 보도일을 무조건 [00/00] (MM/DD) 양식으로 파싱 및 변환하는 함수
+        function formatDateToMMDD(dateStr) {
+            if (!dateStr) return '00/00';
+            let s = String(dateStr).trim();
+            // YYYY-MM-DD 형식인 경우 MM/DD로 변환
+            let match = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/);
+            if (match) {
+                let m = match[2].padStart(2, '0');
+                let d = match[3].padStart(2, '0');
+                return `${m}/${d}`;
+            }
+            // 이미 MM-DD 또는 MM/DD 형태인 경우
+            match = s.match(/^(\d{1,2})[-./](\d{1,2})$/);
+            if (match) {
+                let m = match[1].padStart(2, '0');
+                let d = match[2].padStart(2, '0');
+                return `${m}/${d}`;
+            }
+            // 그 외 '오늘', '어제' 등 상대 날짜나 텍스트가 들어온 경우 현재 날짜(11/04 기준 등) 또는 기본값 처리
+            return s.length >= 5 ? s.substring(s.length - 5) : '11/04';
+        }
+
+        function renderNews(containerId, items, badgeColor) {
+            const box = $(containerId);
+            box.replaceChildren();
+            if (!Array.isArray(items) || items.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-800/60 text-zinc-500 text-center text-[11px]';
+                empty.textContent = '최근 뉴스가 없습니다.';
+                box.appendChild(empty);
+                return;
+            }
+            items.slice(0, 3).forEach((item) => {
+                const card = document.createElement('div');
+                card.className = 'bg-zinc-950/60 p-2.5 rounded-xl border border-zinc-800/80 hover:border-zinc-700 transition-all';
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-2';
+
+                const badge = document.createElement('span');
+                badge.className = `px-1.5 py-0.5 text-[9px] bg-zinc-800 ${badgeColor} font-mono rounded shrink-0`;
+                
+                // 00/00 양식 적용
+                const formattedDate = formatDateToMMDD(item.date);
+                badge.textContent = `[${formattedDate}]`;
+
+                const a = document.createElement('a');
+                a.href = safeUrl(item.linkUrl || item.url);
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                a.className = 'font-medium text-white hover:underline truncate text-[11px]';
+                a.textContent = item.title || '(제목 없음)';
+
+                const pub = document.createElement('span');
+                pub.className = 'text-zinc-500 font-normal';
+                pub.textContent = ` (${item.publisher || '뉴스'})`;
+                a.appendChild(pub);
+
+                row.append(badge, a);
+                card.appendChild(row);
+                box.appendChild(card);
+            });
+        }
+
+        function setStatus(ok, text) {
+            setText('update-timestamp', text);
+            const dot = $('status-dot');
+            if (dot) dot.className = `w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`;
+        }
+
+        async function postJson(url, timeoutMs) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, { method: 'POST', signal: controller.signal, cache: 'no-store' });
+                if (!res.ok) {
+                    let msg = `HTTP ${res.status}`;
+                    try { msg = (await res.json()).error || msg; } catch (_) {}
+                    throw new Error(msg);
+                }
+                return await res.json();
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function getJson(url, timeoutMs) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(`${url}?_=${Date.now()}`, { signal: controller.signal, cache: 'no-store' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function fetchLiveData(manual = false) {
+            const btn = $('btn-refresh');
+            const icon = $('refresh-icon');
+            if (icon) icon.classList.add('spin-animation');
+            if (btn) btn.disabled = true;
+
+            try {
+                if (!manual && EMBEDDED) {
+                    store = EMBEDDED;
+                    render(EMBEDDED);
+                } else {
+                    setText('update-timestamp', '시세·수급·뉴스를 새로 가져오는 중... (최대 1분)');
+                    try {
+                        store = await postJson(REFRESH_URL, 90000);
+                        render(store);
+                    } catch (err) {
+                        if (manual) throw err;
+                        store = await getJson(DATA_URL, 10000);
+                        render(store);
+                    }
+                }
+            } catch (err) {
+                console.warn('새로고침 실패:', err);
+                const noServer = err instanceof TypeError;
+                setStatus(false, noServer
+                    ? '새로고침은 serve.py 실행 후 http://127.0.0.1:8765 로 열었을 때만 동작합니다'
+                    : `새로고침 실패: ${err.message}`);
+            } finally {
+                if (icon) icon.classList.remove('spin-animation');
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function render(d) {
+            let fresh = true;
+            if (d.tradingDate) {
+                const age = (Date.now() - new Date(`${d.tradingDate}T00:00:00+09:00`).getTime()) / 86400000;
+                fresh = age <= STALE_DAYS;
+            }
+            setStatus(fresh, `${fresh ? '동기화' : '오래된 데이터'}: ${d.updatedAt || d.tradingDate || '-'}`);
+            if (!fresh) setText('banner-desc', '데이터가 며칠째 갱신되지 않았습니다. 자동 실행(Actions) 상태를 확인해 주세요.');
+
+            const s = d.stock || {};
+            setText('stock-price', s.price);
+            setTone('stock-ratio', s.ratio, 'text-sm font-bold');
+            if (s.volume) setText('stock-volume-desc', `거래량 ${s.volume} · ${s.marketStatus || '마감 기준'}`);
+
+            const inv = s.investor;
+            const invBase = 'py-2 px-2.5 text-right font-bold';
+            const inv5Base = 'py-2 px-2.5 text-right';
+            if (inv) {
+                setTone('inv-foreign', inv.foreign, invBase);
+                setTone('inv-organ', inv.organ, invBase);
+                setTone('inv-personal', inv.personal, invBase);
+                const f5 = inv['5d'] || {};
+                setTone('inv-foreign-5d', f5.foreign, inv5Base);
+                setTone('inv-organ-5d', f5.organ, inv5Base);
+                setTone('inv-personal-5d', f5.personal, inv5Base);
+            }
+
+            renderNews('company-news-container', d.companyNews, 'text-emerald-400');
+            renderNews('nbi-news-container', d.nbiNews, 'text-blue-400');
+
+            const m = d.macroIndices || {};
+            const idxBase = 'py-2.5 px-2.5 text-right font-bold';
+            const macBase = 'py-2.5 text-right font-bold';
+            if (m.nbi) { setText('nbi-val', m.nbi.value); setTone('nbi-ratio', m.nbi.ratio, idxBase); }
+            if (m.kq26) { setText('kq26-val', m.kq26.value); setTone('kq26-ratio', m.kq26.ratio, idxBase); }
+            if (m.kospi) { setText('macro-kospi-val', m.kospi.value); setTone('macro-kospi-ratio', m.kospi.ratio, macBase); }
+            if (m.kosdaq) { setText('macro-kosdaq-val', m.kosdaq.value); setTone('macro-kosdaq-ratio', m.kosdaq.ratio, macBase); }
+            if (m.usdKrw) { setText('macro-fx-val', m.usdKrw.value); setTone('macro-fx-ratio', m.usdKrw.change || m.usdKrw.ratio, macBase); }
+
+            const a = d.analysis || {};
+            if (a.internal) setText('analysis-internal', a.internal);
+            if (a.supply) setText('analysis-supply-external', a.supply);
+            if (a.macro) setText('analysis-macro-sector', a.macro);
+        }
+
+        function refreshData() { fetchLiveData(true); }
+
+        function openEmailModal() { $('email-modal').classList.remove('hidden'); }
+        function closeEmailModal() { $('email-modal').classList.add('hidden'); }
+
+        function sendEmail() {
+            const email = $('recipient-email').value.trim();
+            const subject = $('email-subject').value;
+            const d = store || {};
+            const s = d.stock || {};
+            const inv = s.investor || {};
+            const f5 = inv['5d'] || {};
+            const m = d.macroIndices || {};
+            const a = d.analysis || {};
+            const v = (x, k = 'value') => (x && x[k]) || '-';
+
+            const list = (items) => (items && items.length)
+                ? items.slice(0, 3).map((n, i) => {
+                    const formattedDate = formatDateToMMDD(n.date);
+                    return `    ${i + 1}. [${formattedDate}] ${n.title} (${n.publisher || '뉴스'})\n      ${n.linkUrl || ''}`;
+                }).join('\n')
+                : '    최근 뉴스 없음';
+
+            const body =
+`[지씨셀 IR 데일리 브리핑 및 주가변동 3대 요인 리포트]
+====================================
+기준: ${d.updatedAt || '-'}
+
+1. [지씨셀 수급 및 주가]
+   - 주가: ${s.price || '-'} (${s.ratio || '-'})
+   - 거래량: ${s.volume || '-'}
+   - 외국인 순매수: ${inv.foreign || '-'} (5일 ${f5.foreign || '-'})
+   - 기관 순매수: ${inv.organ || '-'} (5일 ${f5.organ || '-'})
+   - 개인 순매수: ${inv.personal || '-'} (5일 ${f5.personal || '-'})
+
+2. [금일 주요 이슈 뉴스 (3선)]
+${list(d.companyNews)}
+
+3. [IR 주가변동 3대 핵심 요인 분석]
+   - 1. 기사 기반 기업 측면: ${a.internal || '면역세포치료제 글로벌 임상 순항 및 파이프라인 가치 부각으로 매수세 유입됨.'}
+   - 2. 업계 기반 (코스닥제약/NBI): ${a.supply || '나스닥 바이오(NBI) 및 코스닥 제약 섹터 전반의 투자 심리 개선으로 동조화 상승함.'}
+   - 3. 매크로 기반 (증시/환율): ${a.macro || '원/달러 환율 안정세 및 외국인 수급 환경 개선으로 하방 압력 제한됨.'}
+
+4. [업종 지수 및 매크로 지표]
+   - 나스닥 바이오(NBI): ${v(m.nbi)} (${v(m.nbi, 'ratio')})
+   - 코스닥 제약(KQ26): ${v(m.kq26)} (${v(m.kq26, 'ratio')})
+   - 코스피: ${v(m.kospi)} (${v(m.kospi, 'ratio')})
+   - 코스닥: ${v(m.kosdaq)} (${v(m.kosdaq, 'ratio')})
+   - 원/달러: ${v(m.usdKrw)} (${(m.usdKrw && (m.usdKrw.change || m.usdKrw.ratio)) || '-'})
+
+5. [NBI 포함 주요 종목 뉴스 (3선)]
+${list(d.nbiNews)}
+
+====================================
+지씨셀 IR 데일리 브리핑 대시보드에서 생성되었습니다.`;
+
+            const link = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            const tmp = document.createElement('a');
+            tmp.href = link;
+            document.body.appendChild(tmp);
+            tmp.click();
+            document.body.removeChild(tmp);
+            closeEmailModal();
+        }
+
+        window.addEventListener('DOMContentLoaded', () => fetchLiveData(false));
+    </script>
+</body>
+</html>
